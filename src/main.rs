@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc, cell::RefCell};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 enum Token {
@@ -8,12 +8,13 @@ enum Token {
     Integer(i64),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Object {
     Void,
     Symbol(String),
     Integer(i64),
     List(Vec<Object>),
+    Lambda(Vec<String>, Vec<Object>),
 }
 
 fn parse_tokens(tokens: &mut Vec<Token>) -> Vec<Object> {
@@ -22,20 +23,15 @@ fn parse_tokens(tokens: &mut Vec<Token>) -> Vec<Object> {
     loop {
         if tokens.len() < 1 { break; }
 
-        let token = Some(tokens.remove(0));
+        let token = tokens.remove(0);
         match token {
-            Some(token) => {
-                match token {
-                    Token::Symbol(s) => objects.push(Object::Symbol(s.to_string())),
-                    Token::Integer(i) => objects.push(Object::Integer(i)),
-                    Token::LParen => {
-                        objects.push(Object::List(parse_tokens(tokens)))
-                    },
-                    Token::RParen => break,
-                    _ => {},
-                }
+            Token::Symbol(s) => objects.push(Object::Symbol(s.to_string())),
+            Token::Integer(i) => objects.push(Object::Integer(i)),
+            Token::LParen => {
+                objects.push(Object::List(parse_tokens(tokens)))
             },
-            None => panic!("Insufficien token"),
+            Token::RParen => break,
+            _ => {},
         }
     }
 
@@ -103,19 +99,45 @@ impl VirtualMachine {
         Object::Void
     }
 
+    fn eval_lambda(&mut self, list: &Vec<Object>) -> Object {
+        let params = if let Object::List(list) = &list[1] {
+            let mut params = Vec::new();
+            for param in list {
+                if let Object::Symbol(s) = param {
+                    params.push(s.clone());
+                } else {
+                    panic!("Invalid lambda params");
+                }
+            }
+
+            params
+        } else {
+            panic!("Invalid lambda");
+        };
+
+        let body = if let Object::List(list) = &list[2] {
+            list.clone()
+        } else {
+            panic!("Invalid lambda");
+        };
+
+        Object::Lambda(params, body)
+    }
+
     fn eval_list(&mut self, list: &Vec<Object>) -> Object {
         println!("eval_list: {:?}", list);
-        match list.first() {
-            Some(obj) => {
-                match obj {
-                    Object::Symbol(s) => match s.as_str() {
-                        "define" => self.eval_define(&list),
-                        _ => Object::Void,
-                    },
+
+        if let Some(obj) = list.first() {
+            match obj {
+                Object::Symbol(s) => match s.as_str() {
+                    "define" => self.eval_define(&list),
+                    "lambda" => self.eval_lambda(&list),
                     _ => Object::Void,
-                }
-            },
-            None => Object::Void,
+                },
+                _ => Object::Void,
+            }
+        } else {
+            Object::Void
         }
     }
 
@@ -126,10 +148,6 @@ impl VirtualMachine {
             Object::List(l) => self.eval_list(l),
             _ => Object::Void,
         }
-    }
-
-    fn print_env(&self) {
-        println!("{:?}", self.env);
     }
 }
 
@@ -151,5 +169,5 @@ fn main() {
 
     let mut vm = VirtualMachine::new();
     let _ = vm.eval(ast.first().unwrap());
-    vm.print_env();
+    println!("{:?}", vm.env);
 }
